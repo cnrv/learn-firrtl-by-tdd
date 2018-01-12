@@ -1,0 +1,60 @@
+* 搭建环境
+** 安装 SBT
+*** windows
+[[http:http://www.scala-sbt.org/1.x/docs/zh-cn/Installing-sbt-on-Windows.html][Windows]]
+*** linux
+[[http:http://www.scala-sbt.org/1.x/docs/zh-cn/Installing-sbt-on-Linux.html][Linux]]
+*** Mac
+[[http:www.scala-sbt.org/1.x/docs/zh-cn/Installing-sbt-on-Mac.html][Mac]]
+
+** 配置项目
+ 新建项目目录
+
+#+BEGIN_SRC shell
+mkdir learn-firrtl-by-tdd
+cd learn-firrtl-by-tdd
+#+END_SRC
+
+新建 `build.sbt` 文件。
+
+#+BEGIN_SRC scala
+name := "Learn FIRRTL by TDD"
+
+version := "0.1"
+
+scalaVersion := "2.11.7"
+
+libraryDependencies += "org.scalatest" % "scalatest_2.11" % "2.2.6" % "test"
+#+END_SRC
+
+更新项目配置，下载依赖。
+
+#+BEGIN_SRC shell
+sbt reload update
+#+END_SRC
+** 目录结构
+
+源码目录： ~src/main/scala~
+测试目录： ~src/test/scala~
+
+#+BEGIN_SRC scala
+// src/test/scala/hello.scala
+package firrtlTests
+
+import org.scalatest.{Matchers, FreeSpec}
+
+class HelloSpec extends FreeSpec with Matchers {
+  "Just a simple demo" - {
+    "A stupid assertion" in {
+      "Hello" should be ("Hello")
+    }
+  }
+}
+#+END_SRC
+
+
+#+BEGIN_SRC shell
+sbt test
+#+END_SRC
+
+[[file:images/setup-01.png]]
