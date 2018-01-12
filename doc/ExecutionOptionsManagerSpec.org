@@ -313,9 +313,9 @@ class ExecutionOptionsManager extends HasCommonOptions{
 
 ** 对比下原来的测试代码
 
-原来的测试代码位于 ~orig/test/scala/ExecutionOptionsManagerSpec.scala~ ，对比发现 ~ExecutionOptionsManager~ 需要提供一个参数： ~ExecutionOptionsManager("test")~
+原来的测试代码位于 [[file:~/work/learn-firrtl-by-tdd/orig/test/scala/firrtlTests/ExecutionOptionManagerSpec.scala][ExecutionOptionsManagerSpec.scala]] ，对比发现 ~ExecutionOptionsManager~ 需要提供一个参数： ~ExecutionOptionsManager("test")~
 
-再打开原来的 ~orgi/main/scala/ExecutionOptionsManager.scala~ 发现 
+再打开原来的[[file:~/work/learn-firrtl-by-tdd/orig/main/scala/firrtl/ExecutionOptionsManager.scala][ ExecutionOptionsManager.scala]]  发现： 
 
 #+BEGIN_SRC scala
 abstract class HasParser(applicationName: String) {
@@ -326,6 +326,4 @@ abstract class HasParser(applicationName: String) {
 class ExecutionOptionsManager(val applicationName: String) extends HasParser(applicationName) with HasCommonOptions
 #+END_SRC
 
-原来 ~"test"~ 是作为 ~HasParser~ 的参数，对于
-~ExecutionOptionsManagerSpec.scala~ 这个测试集来说，并没有测试到这点。于是在
-~orig/test/scala/~ 搜索关键词 ~OptionParser~ 出现在 ~DriverSpec.scala~ 。
+原来 ~"test"~ 是作为 ~HasParser~ 的参数，对于 ~ExecutionOptionsManagerSpec.scala~ 这个测试集来说，并没有测试到这点。于是在 ~orig/test/scala/~ 搜索关键词 ~OptionParser~ 出现在 ~DriverSpec.scala~ 。我们下一步就是探索下 ~DriverSpec.scala~ 和 ~Driver.scala~  。
