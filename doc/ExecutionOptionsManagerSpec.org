@@ -1,6 +1,6 @@
 * ExecutionOptionsManagerSpec
 
-这一章内容基于 [[file:~/work/learn-firrtl-by-tdd/orig/test/scala/firrtlTests/ExecutionOptionManagerSpec.scala][ExecutionOptionsManagerSpec.scala]] 进行分析。
+这一章内容基于 [[file:../orig/test/scala/firrtlTests/ExecutionOptionManagerSpec.scala][ExecutionOptionsManagerSpec.scala]] 进行分析。
 
 ** 一步一步添加测试
 *** 测试默认值
@@ -23,7 +23,7 @@ class ExecutionOptionsManagerSpec extends FreeSpec with Matchers {
 }
 #+END_SRC
 
-这段代码导入 ~firrtl~ 包，就是我们的被测试项目。该包里有一个 ~ExecutionOptionsManager~ 类，它有 ~commonOptions~ 属性，该属性应该是个对象（根据对象和类的命名习惯，它是由类 ~CommonOptions~ 生成的对象），因为它还有 ~targetDirName~ 属性，默认值为 ~"test_run_dir"~ 。
+这段代码导入 ~firrtl~ 包，就是我们的被测试项目。该包里有一个 ~ExecutionOptionsManager~ 类，它有 ~commonOptions~ 属性，该属性应该是个对象（根据对象和类的命名习惯，它是由类 ~CommonOptions~ 生成的对象），因为它还有 ~targetDirName~ 属性，默认值为 "test_run_dir" 。
 
 我们在被测的源码目录 ~src/test/scala~ 下新建文件 ~ExecutionOptionsManager.scala~ 内容如下所示：
 
@@ -313,9 +313,9 @@ class ExecutionOptionsManager extends HasCommonOptions{
 
 ** 对比下原来的测试代码
 
-原来的测试代码位于 [[file:~/work/learn-firrtl-by-tdd/orig/test/scala/firrtlTests/ExecutionOptionManagerSpec.scala][ExecutionOptionsManagerSpec.scala]] ，对比发现 ~ExecutionOptionsManager~ 需要提供一个参数： ~ExecutionOptionsManager("test")~
+原来的测试代码位于 [[file:../orig/test/scala/firrtlTests/ExecutionOptionManagerSpec.scala][ExecutionOptionsManagerSpec.scala]] ，对比发现 ~ExecutionOptionsManager~ 需要提供一个参数： ~ExecutionOptionsManager("test")~
 
-再打开原来的[[file:~/work/learn-firrtl-by-tdd/orig/main/scala/firrtl/ExecutionOptionsManager.scala][ ExecutionOptionsManager.scala]]  发现： 
+再打开原来的[[file:../orig/main/scala/firrtl/ExecutionOptionsManager.scala][ ExecutionOptionsManager.scala]]  发现： 
 
 #+BEGIN_SRC scala
 abstract class HasParser(applicationName: String) {
@@ -326,4 +326,4 @@ abstract class HasParser(applicationName: String) {
 class ExecutionOptionsManager(val applicationName: String) extends HasParser(applicationName) with HasCommonOptions
 #+END_SRC
 
-原来 ~"test"~ 是作为 ~HasParser~ 的参数，对于 ~ExecutionOptionsManagerSpec.scala~ 这个测试集来说，并没有测试到这点。于是在 ~orig/test/scala/~ 搜索关键词 ~OptionParser~ 出现在 ~DriverSpec.scala~ 。我们下一步就是探索下 ~DriverSpec.scala~ 和 ~Driver.scala~  。
+原来 "test" 是作为 ~HasParser~ 的参数，对于 ~ExecutionOptionsManagerSpec.scala~ 这个测试集来说，并没有测试到这点。于是在 ~orig/test/scala/~ 搜索关键词 ~OptionParser~ 出现在 ~DriverSpec.scala~ 。我们下一步就是探索下 ~DriverSpec.scala~ 和 ~Driver.scala~  。
