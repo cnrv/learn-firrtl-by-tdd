@@ -1,106 +1,153 @@
 * ExecutionOptionsManagerSpec
 
-这一章内容基于 [[file:../orig/test/scala/firrtlTests/ExecutionOptionManagerSpec.scala][ExecutionOptionsManagerSpec.scala]] 进行分析。
-
-** 一步一步添加测试
-*** 测试默认值
-我们在 ~src/test/scala~ 目录下新建一个文件 ~ExecutionOptionsManagerSpec.scala~ 写入以下内容：
+** 从主函数入手
+主函数位于 ~firrtl/src/main/scala/firrtl/Driver.scala~
 
 #+BEGIN_SRC scala
-// src/test/scala/ExecutionOptionsManagerSpec.scala
+object Driver {
+  def execute(optionsManager: ExecutionOptionsManager with HasFirrtlOptions): FirrtlExecutionResult = {
+    def firrtlConfig = optionsManager.firrtlOptions
+    ...
+  }
+
+  def execute(args: Array[String]): FirrtlExecutionResult = {
+    val optionsManager = new ExecutionOptionsManager("firrtl") with HasFirrtlOptions
+    if(optionsManager.parse(args)) {
+      execute(optionsManager) match {
+        case success: FirrtlExecutionSuccess =>
+          success
+        case failure: FirrtlExecutionFailure =>
+          optionsManager.showUsageAsError()
+          failure
+        case result =>
+          throwInternalError(s"Error: Unknown Firrtl Execution result $result")
+      }
+    }
+    else {
+      FirrtlExecutionFailure("Could not parser command line options")
+    }
+  }
+
+  def main(args: Array[String]): Unit = {
+    execute(args)
+  }
+}
+#+END_SRC
+
+由此可见，主函数的作用是把参数传给 ~execute~ 函数里的 ~optionsManager~ ，即一个例化 ~ExecutionOptionsManager~ 类的对象。顾名思义，该类是专门处理参数的，解析参数合法之后又把自身传递给另一个同名的 ~execute~ 多态函数。暂时分析到这里，先看下 ~ExecutionOptionsManager~ 到底是怎么回事。
+
+** 一步一步添加测试
+参考源码 ~firrtl/src/main/scala/firrtl/ExecutionOptionsManager.scala~ 根据以下的测试只看相关的部分。
+
+参考测试源码 ~firrtl/src/test/scala/firrtlTests/ExecutionOptionsManagerSpec.scala~ 根据以下的测试只看相关的部分。
+
+*** 测试默认值
+我们在 ~src/test/scala/firrtlTests~ 目录下新建一个文件 ~ExecutionOptionsManagerSpec.scala~ 写入以下内容：
+
+#+BEGIN_SRC scala
+// src/test/scala/firrtlTests/ExecutionOptionsManagerSpec.scala
 package firrtlTests
 
 import firrtl._
 import org.scalatest.{Matchers, FreeSpec}
 
 class ExecutionOptionsManagerSpec extends FreeSpec with Matchers {
-  "ExecutionOptionsManager 是一个容器，包含很多组件选项模块（ComposableOptions Block）" - {
+  "ExecutionOptionsManager 是一个容器，用作很多组件的选项模块（ComposableOptions Block）" - {
     "它有一个默认的通用选项模块（CommonOptionsBlock）." in {
-      val manager = new ExecutionOptionsManager()
-      manager.commonOptions.targetDirName should be ("test_run_dir")
+      val manager = new ExecutionOptionsManager("test")
+      manager.commonOptions.targetDirName should be (".")
     }
   }
 }
 #+END_SRC
 
-这段代码导入 ~firrtl~ 包，就是我们的被测试项目。该包里有一个 ~ExecutionOptionsManager~ 类，它有 ~commonOptions~ 属性，该属性应该是个对象（根据对象和类的命名习惯，它是由类 ~CommonOptions~ 生成的对象），因为它还有 ~targetDirName~ 属性，默认值为 "test_run_dir" 。
+这段代码导入 ~firrtl~ 包，就是我们的被测试项目。该包里有一个 ~ExecutionOptionsManager~ 类，它有 ~commonOptions~ 属性，该属性是个对象（根据对象和类的命名习惯，它是由类 ~CommonOptions~ 生成的对象），因为它还有 ~targetDirName~ 属性，默认值为 "."，即当前目录 。
 
-我们在被测的源码目录 ~src/test/scala~ 下新建文件 ~ExecutionOptionsManager.scala~ 内容如下所示：
+完整代码位于： ~doc/code/ExecutionOptionsManagerSpec/ExecutionOptionsManagerSpec-01.scala~
+
+我们在被测的源码目录 ~src/test/scala/firrtl~ 下新建文件 ~ExecutionOptionsManager.scala~ 内容如下所示：
 
 #+BEGIN_SRC scala
-// src/main/scala/ExecutionOptionsManager.scala
-// 被测项目 firrtl 包
+// src/main/scala/firrtl/ExecutionOptionsManager.scala
 package firrtl
 
-class CommonOptions {
-  val targetDirName: String = "test_run_dir"
+trait ComposableOptions
+
+abstract class HasParser(applicationName: String)
+
+case class CommonOptions (
+  val targetDirName: String = "."
+) extends ComposableOptions
+
+trait HasCommonOptions {
+  self: ExecutionOptionsManager =>
+  // 后面会保存命令行的参数，因此声明为可变类型
+  var commonOptions = CommonOptions()
 }
 
-class ExecutionOptionsManager {
+class ExecutionOptionsManager(val applicationName: String) extends HasParser(applicationName) with HasCommonOptions{
   val commonOptions = new CommonOptions
 }
 #+END_SRC
 
+完整代码位于： ~doc/code/ExecutionOptionsManagerSpec/ExecutionOptionsManager-01.scala~
+
 ~sbt test~ 运行测试，结果如图所示：
 
 [[file:images/ExecutionOptionsManagerSpec-01.png]]
+
 *** 重载默认值
 我们再加入一段测试代码，如下所示：
 
 #+BEGIN_SRC scala
-// src/test/scala/ExecutionOptionsManagerSpec.scala
+// src/test/scala/firrtlTests/ExecutionOptionsManagerSpec.scala
 package firrtlTests
 
 import firrtl._
 import org.scalatest.{Matchers, FreeSpec}
 
 class ExecutionOptionsManagerSpec extends FreeSpec with Matchers {
-  "ExecutionOptionsManager 是一个容器，包含很多组件选项模块（ComposableOptions Block）" - {
+  "ExecutionOptionsManager 是一个容器，用作很多组件的选项模块（ComposableOptions Block）" - {
     "它有一个默认的通用选项模块（CommonOptionsBlock）." in {
-      val manager = new ExecutionOptionsManager()
-      manager.commonOptions.targetDirName should be ("test_run_dir")
+      val manager = new ExecutionOptionsManager("test")
+      manager.commonOptions.targetDirName should be (".")
     }
-  }
-  "但可以像下面那样重载默认值" in {
-    val manager = new ExecutionOptionsManager {
-      commonOptions = CommonOptions(topName = "dog")
+    "但可以像下面那样重载默认值" in {
+      val manager = new ExecutionOptionsManager("test") { commonOptions = CommonOptions(topName = "dog") }
+      manager.commonOptions shouldBe a [CommonOptions]
+      manager.topName should be ("dog")
+      manager.commonOptions.topName should be ("dog")
     }
-    manager.commonOptions shouldBe a [CommonOptions]
-    manager.topName should be ("dog")
-    manager.commonOptions.topName should be ("dog")
   }
 }
 #+END_SRC
 
 从下面的这段新加入的测试代码可以看出 ~ExecutionOptionsManager~ 的 ~commonOptions~ 属性是用伴生对象 ~CommonOptions~ 生成的， ~topName~ 既是 ~CommonOptions~ 的属性也是参数；它还有一个属性 ~topName~ ，该属性的值就是 ~commonOptions~ 属性里的 ~topName~ 的值，因为下面的代码只是重载了 ~commonOptions~ 属性，然后 ~topName~ 属性的值也被重载成一样的值。
 
+完整代码位于： ~doc/code/ExecutionOptionsManagerSpec/ExecutionOptionsManagerSpec-02.scala~
+
 #+BEGIN_SRC scala
-// ExecutionOptionsManager 有一个 commonOptions 属性，被重载成 CommonOptions 伴生对象
-  val manager = new ExecutionOptionsManager {
-    commonOptions = CommonOptions(topName = "dog") // topName 作为伴生对象 CommonOptions 的参数
-  }
-  manager.commonOptions shouldBe a [CommonOptions] // commonOptions 是用伴生对象 CommonOptions 生成的
-  manager.topName should be ("dog")                // ExecutionOptionsManager 有一个 topName 属性
-  manager.commonOptions.topName should be ("dog")  // topName 作为伴生对象 CommonOptions 的属性
+// ExecutionOptionsManager 有一个 commonOptions 属性，被赋值成带有 topName 属性的 CommonOptions case class，这里 topName 既是构造函数的参数也是属性
+val manager = new ExecutionOptionsManager("test") { commonOptions = CommonOptions(topName = "dog") }
+manager.commonOptions shouldBe a [CommonOptions] // commonOptions 是用伴生对象 CommonOptions 生成的
+manager.topName should be ("dog")                // ExecutionOptionsManager 有一个 topName 属性
+manager.commonOptions.topName should be ("dog")  // topName 作为伴生对象 CommonOptions 的属性
 #+END_SRC
 
-把原来的 ~CommonOptions~ 类改成 ~case class~ ，加入 ~topName~ ，默认值为空字符串； ~ExecutionOptionsManager~ 加入 ~topName~ 属性，使用 ~def~ 定义而不是 ~val~ （ ~val~ 只会保存初始化的值，之后再也不会改变； 而 ~def~ 每次调用都会重新计算一遍，这样才会读取到重载后的新值），值由 ~commonOptions.topName~ 生成。因为 ~commonOptions~ 属性可以被重载，需要把 ~val~ 改成 ~var~ 。
+修改 ~src/main/scala/firrtl/ExecutionOptionsManager.scala~ ，在 ~CommonOptions~ 里增加 ~topName~ 参数。 ~case class~ 的构造参数同时也是属性。 在 ~ExecutionOptionsManager~ 里增加 ~topName~ 函数，每次调用都会重新从 ~commonOptions~ 里获取新的 ~topName~ 。由于这里的 ~commonOptions~ 可以随时更改，声明成 ~def~ 可以确保每次调用获取的都是新的 ~commonOptions~ ，而 ~val~ 只会获取一次，以后每次调用都是第一次获取的值。
 
 #+BEGIN_SRC scala
-// src/main/scala/ExecutionOptionsManager.scala
-
-package firrtl
-
 case class CommonOptions (
-    topName:        String = "",
-    targetDirName:  String = "test_run_dir"
-)
+  topName:       String = "",
+  targetDirName: String = "."
+) extends ComposableOptions
 
-class ExecutionOptionsManager {
-  var commonOptions = CommonOptions()
-  def topName       = commonOptions.topName
+class ExecutionOptionsManager(val applicationName: String) extends HasParser(applicationName) with HasCommonOptions {
+  def topName: String = commonOptions.topName
 }
 #+END_SRC
+
+完整代码位于： ~doc/code/ExecutionOptionsManagerSpec/ExecutionOptionsManager-02.scala~
 
 ~sbt test~ 测试结果如下：
 
@@ -111,46 +158,26 @@ class ExecutionOptionsManager {
 新增下列测试代码：
 
 #+BEGIN_SRC scala
-// src/test/scala/ExecutionOptionsManagerSpec.scala
+// src/test/scala/firrtlTests/ExecutionOptionsManagerSpec.scala
 package firrtlTests
 
 import firrtl._
 import org.scalatest.{Matchers, FreeSpec}
 
 class ExecutionOptionsManagerSpec extends FreeSpec with Matchers {
-  "ExecutionOptionsManager 是一个容器，包含很多组件选项模块（ComposableOptions Block）" - {
+  "ExecutionOptionsManager 是一个容器，用作很多组件的选项模块（ComposableOptions Block）" - {
     "它有一个默认的通用选项模块（CommonOptionsBlock）." in {
-      val manager = new ExecutionOptionsManager()
-      manager.commonOptions.targetDirName should be ("test_run_dir")
+      val manager = new ExecutionOptionsManager("test")
+      manager.commonOptions.targetDirName should be (".")
     }
-  }
-  "但可以像下面那样重载默认值" in {
-    val manager = new ExecutionOptionsManager {
-      commonOptions = CommonOptions(topName = "dog")
+    "但可以像下面那样重载默认值" in {
+      val manager = new ExecutionOptionsManager("test") { commonOptions = CommonOptions(topName = "dog") }
+      manager.commonOptions shouldBe a [CommonOptions]
+      manager.topName should be ("dog")
+      manager.commonOptions.topName should be ("dog")
     }
-    manager.commonOptions shouldBe a [CommonOptions]
-    manager.topName should be ("dog")
-    manager.commonOptions.topName should be ("dog")
-  }
-  "重载的方式是添加一个给定类型的新版本" in {
-    val manager = new ExecutionOptionsManager() { commonOptions = CommonOptions(topName = "dog") }
-    val initialCommon = manager.commonOptions
-    initialCommon.topName should be ("dog")
-
-    manager.commonOptions = CommonOptions(topName = "cat")
-
-    val afterCommon = manager.commonOptions
-    afterCommon.topName should be ("cat")
-    initialCommon.topName should be ("dog")
-  }
-}
-#+END_SRC
-
-我们分析下新增的代码。尽管 ~val initialCommon = manager.commonOptions~ 和 ~val afterCommon = manager.commonOptions~ 看似都是 ~manager.commonOptions~ ，但所指向的内容不同。最初的版本 ~initialCommon~ 指向的是第一次重载的 ~CommonOptions(topName = "dog")~ ; 之后的 ~afterCommon~ 指向的是第二次重载的 ~CommonOptions(topName = "cat" )~ 。
-
-#+BEGIN_SRC scala
     "重载的方式是添加一个给定类型的新版本" in {
-      val manager = new ExecutionOptionsManager() { commonOptions = CommonOptions(topName = "dog") }
+      val manager = new ExecutionOptionsManager("test") { commonOptions = CommonOptions(topName = "dog") }
       val initialCommon = manager.commonOptions
       initialCommon.topName should be ("dog")
 
@@ -160,10 +187,29 @@ class ExecutionOptionsManagerSpec extends FreeSpec with Matchers {
       afterCommon.topName should be ("cat")
       initialCommon.topName should be ("dog")
     }
-
+  }
+}
 #+END_SRC
 
-运行 ~sbt test~ 结果如图所示：
+完整代码位于： ~doc/code/ExecutionOptionsManagerSpec/ExecutionOptionsManagerSpec-03.scala~
+
+我们分析下新增的代码。尽管 ~val initialCommon = manager.commonOptions~ 和 ~val afterCommon = manager.commonOptions~ 看似都是 ~manager.commonOptions~ ，但所指向的内容不同。最初的版本 ~initialCommon~ 指向的是第一次重载的 ~CommonOptions(topName = "dog")~ ; 之后的 ~afterCommon~ 指向的是第二次重载的 ~CommonOptions(topName = "cat" )~ 。
+
+#+BEGIN_SRC scala
+"重载的方式是添加一个给定类型的新版本" in {
+  val manager = new ExecutionOptionsManager("test") { commonOptions = CommonOptions(topName = "dog") }
+  val initialCommon = manager.commonOptions
+  initialCommon.topName should be ("dog")
+
+  manager.commonOptions = CommonOptions(topName = "cat")
+
+  val afterCommon = manager.commonOptions
+  afterCommon.topName should be ("cat")
+  initialCommon.topName should be ("dog")
+}
+#+END_SRC
+
+由于 ~commonOptions~ 属性是 ~var~ 可变类型，因此可以通过该测试， 运行 ~sbt test~ 结果如图所示：
 
 [[file:images/ExecutionOptionsManagerSpec-03.png]]
 
@@ -172,158 +218,83 @@ class ExecutionOptionsManagerSpec extends FreeSpec with Matchers {
 新增测试代码：
 
 #+BEGIN_SRC scala
-// src/test/scala/ExecutionOptionsManagerSpec.scala
+// src/test/scala/firrtlTests/ExecutionOptionsManagerSpec.scala
 package firrtlTests
 
 import firrtl._
 import org.scalatest.{Matchers, FreeSpec}
 
 class ExecutionOptionsManagerSpec extends FreeSpec with Matchers {
-  "ExecutionOptionsManager 是一个容器，包含很多组件选项模块（ComposableOptions Block）" - {
+  "ExecutionOptionsManager 是一个容器，用作很多组件的选项模块（ComposableOptions Block）" - {
     "它有一个默认的通用选项模块（CommonOptionsBlock）." in {
-      val manager = new ExecutionOptionsManager()
-      manager.commonOptions.targetDirName should be ("test_run_dir")
+      val manager = new ExecutionOptionsManager("test")
+      manager.commonOptions.targetDirName should be (".")
     }
-  }
-  "但可以像下面那样重载默认值" in {
-    val manager = new ExecutionOptionsManager {
-      commonOptions = CommonOptions(topName = "dog")
+    "但可以像下面那样重载默认值" in {
+      val manager = new ExecutionOptionsManager("test") { commonOptions = CommonOptions(topName = "dog") }
+      manager.commonOptions shouldBe a [CommonOptions]
+      manager.topName should be ("dog")
+      manager.commonOptions.topName should be ("dog")
     }
-    manager.commonOptions shouldBe a [CommonOptions]
-    manager.topName should be ("dog")
-    manager.commonOptions.topName should be ("dog")
-  }
-  "重载的方式是添加一个给定类型的新版本" in {
-    val manager = new ExecutionOptionsManager() { commonOptions = CommonOptions(topName = "dog") }
-    val initialCommon = manager.commonOptions
-    initialCommon.topName should be ("dog")
+    "重载的方式是添加一个给定类型的新版本" in {
+      val manager = new ExecutionOptionsManager("test") { commonOptions = CommonOptions(topName = "dog") }
+      val initialCommon = manager.commonOptions
+      initialCommon.topName should be ("dog")
 
-    manager.commonOptions = CommonOptions(topName = "cat")
+      manager.commonOptions = CommonOptions(topName = "cat")
 
-    val afterCommon = manager.commonOptions
-    afterCommon.topName should be ("cat")
-    initialCommon.topName should be ("dog")
-  }
-  "多个组件选项模块（ComposableOptions Block）应该分开" in {
-    val manager = new ExecutionOptionsManager("test") with HasFirrtlOptions {
-      commonOptions = CommonOptions(topName = "spoon")
-      firrtlOptions = FirrtlExecutionOptions(inputFileNameOverride = "fork")
+      val afterCommon = manager.commonOptions
+      afterCommon.topName should be ("cat")
+      initialCommon.topName should be ("dog")
     }
+    "多个组件化的选项模块（composable blocks）应该分开" in {
+      val manager = new ExecutionOptionsManager("test") with HasFirrtlOptions {
+        commonOptions = CommonOptions(topName = "spoon")
+        firrtlOptions = FirrtlExecutionOptions(inputFileNameOverride = "fork")
+      }
 
-    manager.firrtlOptions.inputFileNameOverride should be ("fork")
-    manager.commonOptions.topName should be ("spoon")
+      manager.firrtlOptions.inputFileNameOverride should be ("fork")
+      manager.commonOptions.topName should be ("spoon")
+    }
   }
 }
 #+END_SRC
 
-分析下新增的测试代码，此时多了一个 ~FirrtlExecutionOptions~ ，它有个 ~inputFileNameOverride~ 既作为参数也作为属性，它是通过继承 ~HasFirrtlOptions~ 得来的。
+完整代码位于： ~doc/code/ExecutionOptionsManagerSpec/ExecutionOptionsManagerSpec-04.scala~
+
+分析下新增的测试代码，此时多继承了一个 ~trait~ ~HasFirrtlOptions~ 。这个 ~trait~ 包含了 ~firrtlOptions~ 属性，类型是 ~FirrtlExecutionOptions~ ； 该 ~case class~ 有个 ~inputFileNameOverride~ 既作为参数也作为属性。
 
 #+BEGIN_SRC scala
-  "多个组件选项模块（ComposableOptions Block）应该分开" in {
-    val manager = new ExecutionOptionsManager("test") with HasFirrtlOptions {
-      commonOptions = CommonOptions(topName = "spoon")
-      firrtlOptions = FirrtlExecutionOptions(inputFileNameOverride = "fork")
-    }
-
-    manager.firrtlOptions.inputFileNameOverride should be ("fork")
-    manager.commonOptions.topName should be ("spoon")
+"多个组件化的选项模块（composable blocks）应该分开" in {
+  val manager = new ExecutionOptionsManager("test") with HasFirrtlOptions {
+    commonOptions = CommonOptions(topName = "spoon")
+    firrtlOptions = FirrtlExecutionOptions(inputFileNameOverride = "fork")
   }
-#+END_SRC
 
-模仿之前 ~CommonOptions~ 的代码可得：
-
-#+BEGIN_SRC scala
-// src/main/scala/ExecutionOptionsManager.scala
-
-package firrtl
-
-case class CommonOptions (
-    topName:        String = "",
-    targetDirName:  String = "test_run_dir"
-)
-
-case class FirrtlExecutionOptions (
-    inputFileNameOverride:  String = ""
-)
-
-class ExecutionOptionsManager {
-  var commonOptions = CommonOptions()
-  var firrtlOptions = FirrtlExecutionOptions()
-  def topName       = commonOptions.topName
+  manager.firrtlOptions.inputFileNameOverride should be ("fork")
+  manager.commonOptions.topName should be ("spoon")
 }
 #+END_SRC
 
-但由于需要通过 ~HasFirrtlOptions~ 才获得 ~firrtlOptions~ 属性，所以我们需要把
-~firrtlOptions~ 相关的代码提取到 ~trait HasFirrtlOptions~ 里面：
+新增代码如下：
 
 #+BEGIN_SRC scala
 // src/main/scala/ExecutionOptionsManager.scala
 
-package firrtl
-
-case class CommonOptions (
-    topName:        String = "",
-    targetDirName:  String = "test_run_dir"
-)
-
-case class FirrtlExecutionOptions (
+case class FirrtlExecutionOptions(
     inputFileNameOverride:  String = ""
-)
+) extends ComposableOptions
+
 
 trait HasFirrtlOptions {
+  self: ExecutionOptionsManager =>
+  // 后面会保存命令行的参数，因此声明为可变类型
   var firrtlOptions = FirrtlExecutionOptions()
 }
-
-class ExecutionOptionsManager {
-  var commonOptions = CommonOptions()
-  def topName       = commonOptions.topName
-}
 #+END_SRC
+
+完整代码位于： ~doc/code/ExecutionOptionsManagerSpec/ExecutionOptionsManager-03.scala~
 
 ~sbt test~ 通过测试。
 
-同样地，我们也可以把 ~commonOptions~ 提取成 ~trait HasCommonOptions~ 。因为测试代码里没有继承 ~HasCommonOptions~ 就可以直接使用 ~commonOptions~ ，所以我们需要让 ~ExecutionOptionsManager~ 继承 ~HasCommonOptions~ 。
-
-#+BEGIN_SRC scala
-// src/main/scala/ExecutionOptionsManager.scala
-
-package firrtl
-
-case class CommonOptions (
-    topName:        String = "",
-    targetDirName:  String = "test_run_dir"
-)
-
-case class FirrtlExecutionOptions (
-    inputFileNameOverride:  String = ""
-)
-
-trait HasFirrtlOptions {
-  var firrtlOptions = FirrtlExecutionOptions()
-}
-
-trait HasCommonOptions {
-  var commonOptions = CommonOptions()
-}
-
-class ExecutionOptionsManager extends HasCommonOptions{
-  def topName       = commonOptions.topName
-}
-#+END_SRC
-
-** 对比下原来的测试代码
-
-原来的测试代码位于 [[file:../orig/test/scala/firrtlTests/ExecutionOptionManagerSpec.scala][ExecutionOptionsManagerSpec.scala]] ，对比发现 ~ExecutionOptionsManager~ 需要提供一个参数： ~ExecutionOptionsManager("test")~
-
-再打开原来的[[file:../orig/main/scala/firrtl/ExecutionOptionsManager.scala][ ExecutionOptionsManager.scala]]  发现： 
-
-#+BEGIN_SRC scala
-abstract class HasParser(applicationName: String) {
-  final val parser: OptionParser[Unit] = new OptionParser[Unit](applicationName) {}
-}
-
-
-class ExecutionOptionsManager(val applicationName: String) extends HasParser(applicationName) with HasCommonOptions
-#+END_SRC
-
-原来 "test" 是作为 ~HasParser~ 的参数，对于 ~ExecutionOptionsManagerSpec.scala~ 这个测试集来说，并没有测试到这点。于是在 ~orig/test/scala/~ 搜索关键词 ~OptionParser~ 出现在 ~DriverSpec.scala~ 。我们下一步就是探索下 ~DriverSpec.scala~ 和 ~Driver.scala~  。
+[[file:images/ExecutionOptionsManagerSpec-04.png]]

@@ -1,0 +1,582 @@
+* DriverSpec
+** scopt OptionParser
+参考位于 ~firrtl/src/main/scala/firrtl/Driver.scala~ 的主函数
+
+#+BEGIN_SRC scala
+// firrtl/src/main/scala/firrtl/Driver.scala
+object Driver {
+  def execute(args: Array[String]): FirrtlExecutionResult = {
+    val optionsManager = new ExecutionOptionsManager("firrtl") with HasFirrtlOptions
+    if(optionsManager.parse(args)) {
+      ...
+    }
+    else {
+      ... 
+    }
+  }
+
+  def main(args: Array[String]): Unit = {
+    execute(args)
+  }
+}
+#+END_SRC
+
+可以看到来自命令行的参数传给了 ~ExecutionOptionsManager~ 类的 ~parse~ 方法。找到该方法相关的代码： ~firrtl/src/main/scala/firrtl/ExecutionOptionsManager.scala~
+
+#+BEGIN_SRC scala
+// firrtl/src/main/scala/firrtl/ExecutionOptionsManager.scala
+
+import scopt.OptionParser
+
+abstract class HasParser(applicationName: String) {
+  final val parser = new OptionParser[Unit](applicationName) {}
+  ...
+}
+
+class ExecutionOptionsManager(val applicationName: String) extends HasParser(applicationName) with HasCommonOptions {
+  def parse(args: Array[String]): Boolean = {
+    parser.parse(args)
+  }
+  ...
+}
+
+#+END_SRC
+
+由上可知：
+
+1. 这里引用了外部的库 ~scopt~ 的 ~OptionParser~ ；
+2. 传递应用程序名作为参数例化了 ~OptionParser~ 类，保存到属性 ~parser~ ；
+3. ~ExecutionOptionsManager~ 通过 ~parse~ 方法调用 ~parser~
+
+*** 引入 scopt 
+修改 ~build.sbt~ , 在依赖的库里增加以下内容
+
+#+BEGIN_SRC scala
+
+// 依赖的库
+libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.1" % "test"
+
+libraryDependencies += "com.github.scopt" %% "scopt" % "3.6.0"
+#+END_SRC
+
+*** 新建主函数
+
+新建 ~src/main/scala/firrtl/Driver.scala~ ，写入以下内容：
+
+#+BEGIN_SRC scala
+package firrtl
+
+object Driver {
+  def execute(args: Array[String]) = {
+    val optionsManager = new ExecutionOptionsManager("firrtl") with HasFirrtlOptions
+
+    optionsManager.parse(args)
+  }
+
+  def main(args: Array[String]): Unit = {
+    val ret_code = execute(args)
+    println(s"The Return Code: $ret_code")
+  }
+}
+#+END_SRC
+
+完整代码位于： ~doc/code/DriverSpec/Driver-01.scala~
+
+*** 导入 scopt 
+编辑 ~src/main/scala/firrtl/ExecutionOptionsManager.scala~ , 导入 ~scopt~ 的 ~OptionParser~ ，然后修改抽象类 ~HasParser~ 。在 ~trait HasCommonOptions~ 里加入帮助选项。
+
+#+BEGIN_SRC scala
+import scopt.OptionParser
+
+abstract class HasParser(applicationName: String) {
+  final val parser = new OptionParser[Unit](applicationName) {}
+}
+
+trait HasCommonOptions {
+  self: ExecutionOptionsManager =>
+  // 后面会保存命令行的参数，因此声明为可变类型
+  var commonOptions = CommonOptions()
+
+  parser.note("common options")
+  parser.help("help").text("prints this usage text")
+}
+#+END_SRC
+
+运行 ~sbt "runmMain firrtl.Driver --help"~ 
+
+[[file:images/Driver-01.png]]
+
+** 一步一步添加测试
+参考源码 ~firrtl/src/main/scala/firrtl/ExecutionOptionsManager.scala~ 根据以下的测试只看相关的部分。
+
+参考测试源码 ~firrtl/src/test/scala/firrtlTests/DriverSpec.scala~ 根据以下的测试只看相关的部分。
+
+*** 通用选项 CommonOptions
+**** 测试默认值 
+我们在 ~src/test/scala~ 目录下新建一个文件 ~DriverSpec.scala~ 写入以下内容：
+
+#+BEGIN_SRC scala
+package firrtlTests
+
+import firrtl._
+import org.scalatest.{Matchers, FreeSpec}
+
+class DriverSpec extends FreeSpec with Matchers {
+  "CommonOptions 是一些可在 chisel3 生态系统里使用的简单选项" - {
+    "CommonOption 例化了 scopt 库里的 OptionParser 类" - {
+      "通过传递 Array[String] 到 main 函数设置选项" - {
+        "没有传递参数时使用默认值" in {
+          val optionsManager = new ExecutionOptionsManager("test")
+          optionsManager.parse(Array.empty[String]) should be(true)
+
+          val commonOptions = optionsManager.commonOptions
+          commonOptions.topName should be("")
+          commonOptions.targetDirName should be(".")
+        }
+      }
+    }
+  }
+}
+#+END_SRC
+
+由于上面已经引入了 ~scopt~ 相关的代码，可以直接通过该项测试。
+
+完整代码位于： ~doc/code/DriverSpec/DriverSpec-01.scala~
+
+运行 ~sbt test~ 结果如下：
+
+[[file:images/Driver-02.png]]
+
+**** 可以设置顶层名字 top name 和生成的目标 target
+增加如下测试：
+
+#+BEGIN_SRC scala
+"可以设置顶层名字 top name 和生成的目标 target " in {
+  val optionsManager = new ExecutionOptionsManager("test")
+  optionsManager.parse(Array("--top-name", "dog", "--target-dir", "a/b/c")) should be(true)
+  val commonOptions = optionsManager.commonOptions
+
+  commonOptions.topName should be("dog")
+  commonOptions.targetDirName should be("a/b/c")
+
+  optionsManager.getBuildFileName(".fir") should be("a/b/c/dog.fir")
+  optionsManager.getBuildFileName("fir") should be("a/b/c/dog.fir")
+}
+#+END_SRC
+
+完整代码位于： ~doc/code/DriverSpec/DriverSpec-02.scala~
+
+从新增的测试代码知道 "--top-name" 指定了顶层模块的名字： "dog" 赋值给了 ~topName~ 属性； "--target-dir" 指定目标目录， 把 "a/b/c" 赋值给了 ~targetDirName~ 属性。 ~parse~ 方法能正确解析这些参数然后返回 "true" 。
+
+修改 ~firrtl/src/main/scala/firrtl/ExecutionOptionsManager.scala~ 代码里的 ~HasCommonOptions~ ，添加两个选项能分别解析 ~--top-name~ 和 ~--target-dir--~ ：
+
+#+BEGIN_SRC scala
+trait HasCommonOptions {
+  // 依赖注入，表明继承的只能是 ExecutionOptionsManager，这样就可以使用 parser 属性
+  // 因为 ExecutionOptionsManager 继承了 HasParser
+  self: ExecutionOptionsManager =>
+
+  // 后面会保存命令行的参数，因此声明为可变类型
+  var commonOptions = CommonOptions()
+
+  parser.note("common options")
+
+  parser.opt[String]("top-name")
+    .abbr("tn")                                              // 添加缩写，-tn 等价于 --top-name
+    .valueName("<top-level-circuit-name>")                   // 解释该参数的值的作用
+    .foreach { x =>
+      commonOptions = commonOptions.copy(topName = x)        // 把解析到参数赋值给 commonOptions 的 topName 属性
+    }
+    .text("该选项定义了顶层电路，默认名字尽可能跟待测模块（dut）一致") // 该参数的详细描述
+
+  parser.opt[String]("target-dir")
+    .abbr("td")                                              // 添加缩写，-td 等价于 --target-dir
+    .valueName("<target-directory>")                         // 解释该参数的值的作用
+    .foreach { x =>
+      commonOptions = commonOptions.copy(targetDirName = x)  // 把解析到参数赋值给 commonOptions 的 targetDirName 属性
+    }                                                        // 该参数的详细描述
+    .text(s"该选项定义了用于存放程序运行过程中产生的文件，默认值是 ${commonOptions.targetDirName}") 
+
+  parser.help("help").text("prints this usage text")
+}
+#+END_SRC
+
+从新增的测试代码知道多了 ~getBuildFileName~ 的方法，传入后缀名参数可带点或者不带点结果都是目标目录加上顶层文件名和该后缀参数。
+
+修改 ~firrtl/src/main/scala/firrtl/ExecutionOptionsManager.scala~ 代码里的 ~class ExecutionOptionsManager~ ，增加 ~getBuildFileName~ 方法：
+
+#+BEGIN_SRC scala
+def getBuildFileName(suffix: String): String = {
+  val baseName = topName
+
+  val directoryName = {
+    // 如果文件名自带了目录名则忽略目标目录名 targetDirName
+    if(baseName.startsWith("./") || baseName.startsWith("/")) {
+      ""
+    }
+    else {
+      // 如果目标目录名字里没有 "/" 分隔符的话，加上 "/"
+      if(targetDirName.endsWith("/")) targetDirName else targetDirName + "/"
+    }
+  }
+  val normalizedSuffix = {
+    // 如果后缀名没有带点就加上
+    val dottedSuffix = if(suffix.startsWith(".")) suffix else s".$suffix"
+    // 如果名字本身就带有相同的后缀就不用重复添加了
+    if(baseName.endsWith(dottedSuffix)) "" else dottedSuffix
+  }
+  // 把目录名、文件名和后缀名拼接起来作为返回值
+  s"$directoryName$baseName$normalizedSuffix"
+}
+#+END_SRC
+
+完整代码位于： ~doc/code/DriverSpec/ExecutionOptionsManager-01.scala~
+
+运行 ~sbt test~ ，结果如下：
+
+[[file:images/Driver-03.png]]
+
+**** CommonOptions 能够新建一个目录
+增加如下测试：
+
+#+BEGIN_SRC scala
+"CommonOptions 能够新建一个目录" in {
+  
+  // 排除已经存在同名目录的可能
+  var dir = new java.io.File("a/b/c")
+  if(dir.exists()) {
+    dir.delete()
+  }
+
+  // 传递参数并检查是否正确解析了参数
+  val optionsManager = new ExecutionOptionsManager("test")
+  optionsManager.parse(Array("--top-name", "dog", "--target-dir", "a/b/c")) should be (true)
+  val commonOptions = optionsManager.commonOptions
+
+  commonOptions.topName should be ("dog")
+  commonOptions.targetDirName should be ("a/b/c")
+
+  // 新建目录并检查是否创建成功
+  optionsManager.makeTargetDir() should be (true)
+  dir = new java.io.File("a/b/c")
+  dir.exists() should be (true)
+  FileUtils.deleteDirectoryHierarchy("a") should be (true)
+}
+#+END_SRC
+
+新增的测试代码做了三件事：1）排除已经存在同名目录的可能；2）传递参数并检查是否正确解析了参数；3）新建目录并检查是否创建成功。
+
+完整代码位于： ~doc/code/DriverSpec/DriverSpec-03.scala~
+
+这里 ~ExecutionOptionsManager~ 增加了 ~makeTargetDir~ 方法，编辑 ~src/main/scala/firrtl/ExecutionOptionsManager.scala~ ，在 ~ExecutionOptionsManager~ 类里加入 ~makeTargetDir~ 方法：
+
+#+BEGIN_SRC scala
+  def makeTargetDir(): Boolean = {
+    FileUtils.makeDirectory(commonOptions.targetDirName)
+  }
+#+END_SRC
+
+完整代码位于： ~doc/code/DriverSpec/ExecutionOptionsManager-02.scala~
+
+这里引用了 ~FileUtils~ 单例对象的 ~makeDirectory~ 和 ~deleteDirectoryHierarchy~ 两个方法。 ~FileUtils~ 调用了 ~Driver~ 的 ~dramaticError~ 方法， 编辑 ~src/main/scala/firrtl/Driver.scala~ ，新增这个单例对象和添加该方法：
+
+#+BEGIN_SRC scala
+import java.io.File
+
+object Driver {
+  def dramaticError(message: String): Unit = {
+    println(Console.RED + "-"*78)
+    println(s"Error: $message")
+    println("-"*78 + Console.RESET)
+  }
+
+  ...
+}
+
+object FileUtils {
+  /**
+    * 递归地创建目录以及所有父目录
+    */
+  def makeDirectory(directoryName: String): Boolean = {
+    val dirFile = new java.io.File(directoryName)
+    if(dirFile.exists()) {
+      if(dirFile.isDirectory) {
+        true
+      }
+      else {
+        false
+      }
+    }
+    else {
+      dirFile.mkdirs()
+    }
+  }
+
+  /**
+    * 递归地删除相对路径里的所有目录
+    */
+  def deleteDirectoryHierarchy(directoryPathName: String): Boolean = {
+    deleteDirectoryHierarchy(new File(directoryPathName))
+  }
+  /**
+    * 递归地删除相对路径里的所有目录
+    */
+  def deleteDirectoryHierarchy(file: File, atTop: Boolean = true): Boolean = {
+    if(file.getPath.split("/").last.isEmpty ||
+      file.getAbsolutePath == "/" ||
+      file.getPath.startsWith("/")) {
+      Driver.dramaticError(s"delete directory ${file.getPath} will not delete absolute paths")
+      false
+    }
+    else {
+      val result = {
+        if(file.isDirectory) {
+          file.listFiles().forall( f => deleteDirectoryHierarchy(f)) && file.delete()
+        }
+        else {
+          file.delete()
+        }
+      }
+      result
+    }
+  }
+}
+#+END_SRC
+
+完整代码位于： ~doc/code/DriverSpec/Driver-02.scala~
+
+~sbt test~ 结果如下：
+
+[[file:images/Driver-04.png]]
+
+**** commonOptions.programArgs 默认会返回多余的参数
+
+新增下列测试代码：
+
+#+BEGIN_SRC scala
+"commonOptions.programArgs 默认会返回多余的参数" in {
+  val optionsManager = new ExecutionOptionsManager("test")
+
+  // --top-name 只接受一个参数，剩下的参数都保存在 commonOptions.programArgs 里
+  optionsManager.parse(Array("--top-name", "dog", "fox", "tardigrade", "stomatopod")) should be(true)
+  optionsManager.commonOptions.programArgs.length should be(3)
+  optionsManager.commonOptions.programArgs should be("fox" :: "tardigrade" :: "stomatopod" :: Nil)
+
+  // 没有指定的参数都保存在 commonOptions.programArgs 里
+  optionsManager.commonOptions = CommonOptions()
+  optionsManager.parse(
+    Array("dog", "stomatopod")) should be(true)
+  optionsManager.commonOptions.programArgs.length should be(2)
+  optionsManager.commonOptions.programArgs should be("dog" :: "stomatopod" :: Nil)
+
+  // 没有指定的参数都保存在 commonOptions.programArgs 里，包括在 --top-name 前面的
+  optionsManager.commonOptions = CommonOptions()
+  optionsManager.parse(
+    Array("fox", "--top-name", "dog", "tardigrade", "stomatopod")) should be(true)
+  optionsManager.commonOptions.programArgs.length should be(3)
+  optionsManager.commonOptions.programArgs should be("fox" :: "tardigrade" :: "stomatopod" :: Nil)
+}
+#+END_SRC
+
+完整代码位于： ~doc/code/DriverSpec/DriverSpec-04.scala~
+
+编辑 ~src/main/scala/firrtl/ExecutionOptionsManager.scala~ ，在 ~HasCommonOptions~ 增加接受没有指定用途的参数，存放到 ~case class CommonOptions~ 的 ~programArgs~ 属性里：
+
+#+BEGIN_SRC scala
+case class CommonOptions (
+  topName:       String    = "",
+  targetDirName: String    = ".",
+  programArgs: Seq[String] = Seq.empty
+) extends ComposableOptions
+
+trait HasCommonOptions {
+  ...
+
+  parser.arg[String]("<arg>...").unbounded().optional().action( (x, c) =>
+    commonOptions = commonOptions.copy(programArgs = commonOptions.programArgs :+ x) ).text("可选的没有指定用途的参数")
+}
+#+END_SRC
+
+完整代码位于： ~doc/code/DriverSpec/ExecutionOptionsManager-03.scala~
+
+运行测试： ~sbt test~
+
+[[file:images/Driver-05.png]]
+
+*** FIRRTL 编译器相关选项 FirrtlOptions
+**** 包含通用选项
+新增下列测试代码：
+
+#+BEGIN_SRC scala
+"FirrtlOptions 保存用于 firrtl 编译器相关的选项信息" - {
+  "包括通用选项 CommonOptions" in {
+    val optionsManager = new ExecutionOptionsManager("test")
+    optionsManager.commonOptions.targetDirName should be(".")
+  }
+}
+#+END_SRC
+
+完整代码位于： ~doc/code/DriverSpec/DriverSpec-05.scala~
+
+新增的测试只是为了确保包含了 CommonOptions 选项，被测代码不需增加什么。
+
+运行测试： ~sbt test~
+
+[[file:images/Driver-06.png]]
+
+**** 基于目标提供输入和输出文件名
+新增下列测试代码：
+
+#+BEGIN_SRC scala
+"根据目标提供输入和输出文件名" in {
+  val optionsManager = new ExecutionOptionsManager("test") with HasFirrtlOptions
+
+  optionsManager.parse(Array("--top-name", "cat")) should be(true)
+
+  val firrtlOptions = optionsManager.firrtlOptions
+  val inputFileName = optionsManager.getBuildFileName("fir", firrtlOptions.inputFileNameOverride)
+  inputFileName should be("./cat.fir")
+  val outputFileName = firrtlOptions.getTargetFile(optionsManager)
+  outputFileName should be("./cat.v")
+}
+#+END_SRC
+
+从新增的测试代码得知：1）FIRRTL 参数是通过继承 ~HasFirrtlOptions~ 得到 ~firrtlOptions~ 属性；2） ~getBuildFileName~ 方法接受一个重载参数，如果该参数为空，则用 ~topName~ 代替； 这里 ~firrtlOptions.inputFileNameOverride~ 默认值为空； 3） ~firrtlOptions~ 有 ~getTargetFile~ 方法，参数类型是 ~ExecutionOptionsManager~
+
+完整代码位于： ~doc/code/DriverSpec/DriverSpec-06.scala~
+
+编辑 ~src/main/scala/firrtl/ExecutionOptionsManager.scala~ ，修改 ~getBuildFileName~ 方法，加入 ~fileNameOverride~ 参数，默认值是空字符串。如果该参数非空，将会覆盖掉顶层模块名 topName，也会忽略目标目录名。
+
+#+BEGIN_SRC scala
+def getBuildFileName(suffix: String, fileNameOverride: String = ""): String = {
+  val baseName = if(fileNameOverride.nonEmpty) fileNameOverride else topName
+
+  val directoryName = {
+    if(fileNameOverride.nonEmpty) {
+      ""
+    }
+    // 如果文件名自带了目录名则忽略目标目录名 targetDirName
+    else if(baseName.startsWith("./") || baseName.startsWith("/")) {
+      ""
+    }
+    else {
+      // 如果目标目录名字里没有 "/" 分隔符的话，加上 "/"
+      if(targetDirName.endsWith("/")) targetDirName else targetDirName + "/"
+    }
+  }
+
+  ...
+}
+#+END_SRC
+
+编辑 ~src/main/scala/firrtl/ExecutionOptionsManager.scala~ ，修改 ~FirrtlExecutionOptions~ 
+
+#+BEGIN_SRC scala
+case class FirrtlExecutionOptions(
+    inputFileNameOverride:  String = "",
+    outputFileNameOverride: String = "",
+    compilerName: String = "verilog"
+) extends ComposableOptions {
+
+  def outputSuffix: String = {
+    compilerName match {
+      case "verilog"   => "v"
+      case "sverilog"  => "sv"
+      case "low"       => "lo.fir"
+      case "high"      => "hi.fir"
+      case "middle"    => "mid.fir"
+      case _ =>
+        throw new Exception(s"Illegal compiler name $compilerName")
+    }
+  }
+
+  /**
+    * 获取用户定义的 [[OutputConfig]]
+    * 参数 optionsManager 这是用来获取构建函数和它的通用选项
+    * 返回输出配置
+    */
+  def getOutputConfig(optionsManager: ExecutionOptionsManager): OutputConfig = {
+    SingleFile(optionsManager.getBuildFileName(outputSuffix, outputFileNameOverride))
+  }
+
+  /**
+    * 获取用户定义的目标文件，这里要求 [[OutputConfig]] 是 [[SingleFile]]
+    * 参数 optionsManager 这是用来获取构建函数和它的通用选项
+    * 以字符串的形式返回目标文件
+    */
+  def getTargetFile(optionsManager: ExecutionOptionsManager): String = {
+    getOutputConfig(optionsManager) match {
+      case SingleFile(targetFile) => targetFile
+      case other => throw new Exception("OutputConfig is not SingleFile!")
+    }
+  }
+}
+#+END_SRC
+
+完整代码位于： ~doc/code/DriverSpec/ExecutionOptionsManager-04.scala~
+
+运行 ~sbt test~
+
+[[file:images/Driver-07.png]]
+
+**** 输入和输出文件名可以被重新定义
+
+新增测试代码，增加了 "-i" 和 "-o" 参数，分别把参数值传递给了 ~inputFileNameOverride~ 和 ~outputFileNameOverride~ 属性：
+
+#+BEGIN_SRC scala
+"输入和输出文件名可以被重新定义，重新定义会忽略 targetDir 变量" in {
+  val optionsManager = new ExecutionOptionsManager("test") with HasFirrtlOptions
+
+  optionsManager.parse(
+    Array("--top-name", "cat", "-i", "./bob.fir", "-o", "carol.v")
+  ) should be(true)
+
+  val firrtlOptions = optionsManager.firrtlOptions
+  val inputFileName = optionsManager.getBuildFileName("fir", firrtlOptions.inputFileNameOverride)
+  inputFileName should be("./bob.fir")
+  val outputFileName = firrtlOptions.getTargetFile(optionsManager)
+  outputFileName should be("carol.v")
+}
+#+END_SRC
+
+完整代码位于： ~doc/code/DriverSpec/DriverSpec-07.scala~
+
+编辑 ~src/main/scala/firrtl/ExecutionOptionsManager.scala~ ：修改 ~trait HasFirrtlOptions~ 新增 FIRRTL 的两个参数 "-i" 和 "-o" ，分别把参数值传递给了 ~inputFileNameOverride~ 和 ~outputFileNameOverride~ 来覆盖掉默认值
+
+#+BEGIN_SRC scala
+trait HasFirrtlOptions {
+  // 依赖注入，表明继承的只能是 ExecutionOptionsManager，这样就可以使用 parser 属性
+  // 因为 ExecutionOptionsManager 继承了 HasParser
+  self: ExecutionOptionsManager =>
+
+  // 后面会保存命令行的参数，因此声明为可变类型
+  var firrtlOptions = FirrtlExecutionOptions()
+
+  parser.note("firrtl options")
+
+  parser.opt[String]("input-file")
+    .abbr("i")                         // 添加缩写，-i 等价于 --input-file
+    .valueName ("<firrtl-source>")     // 解释该参数的值的作用
+    .foreach { x =>                    // 把解析到参数赋值给 firrtlOptions 的 inputFileNameOverride 属性
+      firrtlOptions = firrtlOptions.copy(inputFileNameOverride = x)
+    }.text {                           // 该参数的详细描述
+      "输入文件名默认为空，可以指定该参数起新的名字"
+    }
+
+  parser.opt[String]("output-file")
+    .abbr("o")                         // 添加缩写，-o 等价于 --output-file
+    .valueName("<output>")             // 解释该参数的值的作用
+    .foreach { x =>                    // 把解析到参数赋值给 firrtlOptions 的 outputFileNameOverride 属性
+      firrtlOptions = firrtlOptions.copy(outputFileNameOverride = x)
+    }.text {
+      "输出文件名默认为空，可以指定该参数起新的名字"
+    }
+}
+#+END_SRC
+
+完整代码位于： ~doc/code/DriverSpec/ExecutionOptionsManager-05.scala~
+
+运行 ~sbt test~
+
+[[file:images/Driver-08.png]]
+

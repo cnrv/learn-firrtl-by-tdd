@@ -8,23 +8,113 @@
 [[http:www.scala-sbt.org/1.x/docs/zh-cn/Installing-sbt-on-Mac.html][Mac]]
 
 ** 配置项目
- 新建项目目录
+
+*** 新建项目目录
 
 #+BEGIN_SRC shell
-mkdir learn-firrtl-by-tdd
-cd learn-firrtl-by-tdd
+$ mkdir learn-firrtl-by-tdd
+$ cd learn-firrtl-by-tdd
 #+END_SRC
 
-新建 `build.sbt` 文件。
+*** 指定 SBT 版本
+
+新建 ~project~ 目录，并创建 ~build.properties~ 文件：
+
+#+BEGIN_SRC shell
+$ mkdir project
+$ touch build.properties
+#+END_SRC
+
+使用编辑器打开 ~build.properties~ ，写入以下内容：
 
 #+BEGIN_SRC scala
+sbt.version=1.1.1
+#+END_SRC
+
+*** 指定 SBT 插件
+在 ~project~ 目录里新建 ~plugins.sbt~ 文件：
+
+#+BEGIN_SRC shell
+$ touch plugins.sbt
+#+END_SRC
+
+使用编辑器打开 ~plugins.sbt~ ，写入以下内容：
+
+#+BEGIN_SRC scala
+addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "0.14.6")
+#+END_SRC
+
+*** 新建 SBT 构建文件
+
+新建 ~build.sbt~ 文件。
+
+#+BEGIN_SRC shell
+$ touch build.sbt
+#+END_SRC
+
+使用编辑器打开 ~build.sbt~ ，写入以下内容：
+
+#+BEGIN_SRC scala
+// 组织名称
+organization := "cnrv.io"
+
+// 项目名称
 name := "Learn FIRRTL by TDD"
 
+// 项目版本
 version := "0.1"
 
-scalaVersion := "2.11.7"
+// Scala 版本
+scalaVersion := "2.12.4"
 
-libraryDependencies += "org.scalatest" % "scalatest_2.11" % "2.2.6" % "test"
+// 可选的 Scala 版本
+crossScalaVersions := Seq("2.11.12", "2.12.4")
+
+// 根据当前选择的 Scala 版本选择对应 Scalac 和 javac 的版本
+def scalacOptionsVersion(scalaVersion: String): Seq[String] = {
+  Seq() ++ {
+    // If we're building with Scala > 2.11, enable the compile option
+    //  switch to support our anonymous Bundle definitions:
+    //  https://github.com/scala/bug/issues/10047
+    CrossVersion.partialVersion(scalaVersion) match {
+      case Some((2, scalaMajor: Long)) if scalaMajor < 12 => Seq()
+      case _ => Seq("-Xsource:2.11")
+    }
+  }
+}
+
+scalacOptions := scalacOptionsVersion(scalaVersion.value) ++ Seq(
+  "-deprecation"
+)
+
+def javacOptionsVersion(scalaVersion: String): Seq[String] = {
+  Seq() ++ {
+    // Scala 2.12 requires Java 8, but we continue to generate
+    //  Java 7 compatible code until we need Java 8 features
+    //  for compatibility with old clients.
+    CrossVersion.partialVersion(scalaVersion) match {
+      case Some((2, scalaMajor: Long)) if scalaMajor < 12 =>
+        Seq("-source", "1.7", "-target", "1.7")
+      case _ =>
+        Seq("-source", "1.8", "-target", "1.8")
+    }
+  }
+}
+
+javacOptions ++= javacOptionsVersion(scalaVersion.value)
+
+// 依赖的库
+libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.1" % "test"
+
+libraryDependencies += "com.github.scopt" %% "scopt" % "3.6.0"
+
+// JAR 打包配置
+assemblyJarName in assembly := "firrtl.jar"
+
+test in assembly := {} // Should there be tests?
+
+assemblyOutputPath in assembly := file("./utils/bin/firrtl.jar")
+
 #+END_SRC
 
 更新项目配置，下载依赖。
@@ -37,24 +127,77 @@ sbt reload update
 源码目录： ~src/main/scala~
 测试目录： ~src/test/scala~
 
+*** 简单的测试例子
+
+在源码目录创建 ~hello~ 目录以及源文件 ~hello.scala~
+
+#+BEGIN_SRC shell
+$ mkdir src/main/scala/hello
+$ cd src/main/scala/hello
+$ touch hello.scala
+#+END_SRC
+
+用编辑器打开 ~hello.scala~ ，写入以下内容：
+
 #+BEGIN_SRC scala
-// src/test/scala/hello.scala
-package firrtlTests
+// src/main/scala/hello/hello.scala
+package hello
+
+object Hello {
+  val message = "Hello, world!"
+  def main(args: Array[String]): Unit = {
+    println(message)
+  }
+}
+#+END_SRC
+
+在测试目录新建 ~helloTests~ 目录以及源文件 ~HelloSpec.scala~ 文件：
+
+#+BEGIN_SRC shell
+$ mkdir src/test/scala/helloTests
+$ cd src/test/scala/helloTests
+$ touch HelloSpec.scala
+#+END_SRC
+
+用编辑器打开 ~HelloSpec.scala~ ，写入以下内容：
+
+#+BEGIN_SRC scala
+// src/test/scala/helloTests/HelloSpec.scala
+package helloTests
 
 import org.scalatest.{Matchers, FreeSpec}
+import hello._
+
 
 class HelloSpec extends FreeSpec with Matchers {
   "Just a simple demo" - {
     "A stupid assertion" in {
-      "Hello" should be ("Hello")
+      Hello.message should be ("Hello, world!")
     }
   }
 }
 #+END_SRC
 
+输入以下命令让 ~sbt~ 测试 ~HelloSpec~
 
 #+BEGIN_SRC shell
-sbt test
+$ sbt
+$ sbt > testOnly helloTests.HelloSpec
 #+END_SRC
 
+输出结果如下图所示：
+
 [[file:images/setup-01.png]]
+
+sbt 运行 ~hello~
+
+#+BEGIN_SRC shell
+$ sbt "runMain hello.Hello"
+#+END_SRC
+
+打包 ~hello~ jar
+
+#+BEGIN_SRC shell
+$ sbt assembly
+$ java -cp utils/bin/firrtl.jar hello.Hello
+#+END_SRC
